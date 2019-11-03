@@ -18,7 +18,7 @@ def parse_arguments():
 if __name__ == "__main__":
     init_logging()
     args = parse_arguments()
-    df = pd.read_csv(os.path.join("..", "csv", args.input_tickers), delimiter=";", header=None)
+    df = pd.read_csv(os.path.join(args.input_tickers), delimiter=";", header=None)
     tickers = list(df[0])
     yahoo_scraper = YahooScraper()
     yahoo_scraper.scrape(tickers)
