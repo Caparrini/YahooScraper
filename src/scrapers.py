@@ -63,7 +63,7 @@ class YahooScraper(BaseScraper):
             except:
                 paragraph = False
             i += 1
-        #my_new["text"] = unicodedata.normalize("NFKD", BeautifulSoup(" ".join(new_text), "html.parser").get_text())
+        # my_new["text"] = unicodedata.normalize("NFKD", BeautifulSoup(" ".join(new_text), "html.parser").get_text())
         my_new["text"] = " ".join(new_text)
         return my_new
 
@@ -73,11 +73,14 @@ class YahooScraper(BaseScraper):
         for u in new_urls:
             full_url = self.base_url + u
             res_new = self.download(full_url)
-            soup_new = BeautifulSoup(res_new.content, "html.parser")
-            my_new = self.__scrap_new(soup_new)
-            my_new["url"] = full_url
-            news.append(my_new)
-            time.sleep(4)
+            if res_new is None:
+                logging.error("Error ")
+            else:
+                soup_new = BeautifulSoup(res_new.content, "html.parser")
+                my_new = self.__scrap_new(soup_new)
+                my_new["url"] = full_url
+                news.append(my_new)
+            #time.sleep(4)
         return news
 
     def results2csv(self, scrap_result):
@@ -150,7 +153,7 @@ class YahooScraper(BaseScraper):
             soup_stats = BeautifulSoup(res_stats.content, "html.parser")
             stats_scraped = self.__scrap_statistics(soup_stats)
             scrap_results[t] = {"summary": summary_scraped, "stats": stats_scraped, "news": news_scraped}
-            time.sleep(4)
+            #time.sleep(4)
         return scrap_results
 
     def scrape(self, tickers):
