@@ -1,10 +1,11 @@
 import csv
 import logging
 import os
-import time
-
+import urllib.request
+import shutil
 import requests
 from bs4 import BeautifulSoup
+import time
 import src.auxiliar
 
 
@@ -12,13 +13,26 @@ class BaseScraper:
     def __init__(self):
         self.url = ""
 
-    def download(self, url, user_agent="wswp", num_retries=2):
+    def download(self, url, user_agent="wswp", num_retries=10):
         logging.info("Downloading: {}".format(url))
         headers = {'User-agent': user_agent}
         try:
             res = requests.get(url, headers)
         except requests.exceptions.RequestException as e:
             logging.error("Download error: {}".format(e))
+            res = None
+            if num_retries > 0:
+                time.sleep(10)
+                return self.download(url, user_agent, num_retries-1)
+        return res
+
+    def download_img(self, url, file_name):
+        try:
+            with urllib.request.urlopen(url) as response, open(file_name, 'wb') as out_file:
+                shutil.copyfileobj(response, out_file)
+            res = 0
+        except Exception as e:
+            logging.error("Error {} writing img".format(e))
             res = None
         return res
 
@@ -29,21 +43,24 @@ class YahooScraper(BaseScraper):
         self.base_url = "https://finance.yahoo.com"
 
     def __scrap_statistics(self, soup):
-        tds = soup.find_all("td")
-        keys = []
-        values = []
-        for i in range(len(tds)):
-            if i % 2 == 0:
-                keys.append(tds[i].find("span").text)
+        try:
+            tds = soup.find_all("td")
+            keys = []
+            values = []
+            for i in range(len(tds)):
+                if i % 2 == 0:
+                    keys.append(tds[i].find("span").text)
+                else:
+                    values.append(tds[i].text)
+            if len(keys) != len(values):
+                logging.error("No se pueden generar estadisticas, distinto numero de key y values.")
+                estadisticas = None
             else:
-                values.append(tds[i].text)
-        if len(keys) != len(values):
-            logging.error("No se pueden generar estadisticas, distinto numero de key y values.")
-            estadisticas = None
-        else:
-            estadisticas = dict(zip(keys, values))
+                estadisticas = dict(zip(keys, values))
 
-        return estadisticas
+            return estadisticas
+        except:
+            return None
 
     def __find_news_urls(self, soup):
         full_div_a = soup.find_all("a")
@@ -52,7 +69,10 @@ class YahooScraper(BaseScraper):
 
     def __scrap_new(self, soup):
         logging.info("Scrap de una noticia...")
-        my_new = {"date": soup.find("time").text}
+        try:
+            my_new = {"date": soup.find("time").text}
+        except:
+            my_new = {"date": "NA"}
         paragraph = True
         p_labeled = soup.find_all("p")
         i = 0
@@ -73,7 +93,7 @@ class YahooScraper(BaseScraper):
         for u in new_urls:
             full_url = self.base_url + u
             res_new = self.download(full_url)
-            if res_new is None:
+            if res_new is None or res_new.status_code != 200:
                 logging.error("Error ")
             else:
                 soup_new = BeautifulSoup(res_new.content, "html.parser")
@@ -142,18 +162,24 @@ class YahooScraper(BaseScraper):
         for t in tickers:
             self.url = self.url_ticker.format(t, t)
             res = self.download(self.url)
-            soup = BeautifulSoup(res.content, "html.parser")
-            logging.info("Extraemos los datos de Summary")
-            summary_scraped = self.__scrap_statistics(soup)
-            logging.info("Extraemos los datos de noticias")
-            news_scraped = self.__scrap_news(soup)
-            logging.info("Extraemos las estadisticas")
-            url_stats = self.url_ticker.format(t + "/key-statistics", t)
-            res_stats = self.download(url_stats)
-            soup_stats = BeautifulSoup(res_stats.content, "html.parser")
-            stats_scraped = self.__scrap_statistics(soup_stats)
-            scrap_results[t] = {"summary": summary_scraped, "stats": stats_scraped, "news": news_scraped}
-            #time.sleep(4)
+            if res.status_code != 200:
+                logging.error("Ticker no existe (empresa ya no esta en bolsa)")
+            else:
+                soup = BeautifulSoup(res.content, "html.parser")
+                logging.info("Extraemos los datos de Summary")
+                summary_scraped = self.__scrap_statistics(soup)
+                if summary_scraped is not None:
+                    logging.info("Extraemos los datos de noticias")
+                    news_scraped = self.__scrap_news(soup)
+                    logging.info("Extraemos las estadisticas")
+                    url_stats = self.url_ticker.format(t + "/key-statistics", t)
+                    res_stats = self.download(url_stats)
+                    soup_stats = BeautifulSoup(res_stats.content, "html.parser")
+                    stats_scraped = self.__scrap_statistics(soup_stats)
+                    scrap_results[t] = {"summary": summary_scraped, "stats": stats_scraped, "news": news_scraped}
+                else:
+                    logging.error("Error intentando extraer datos del ticker")
+            # time.sleep(4)
         return scrap_results
 
     def scrape(self, tickers):
